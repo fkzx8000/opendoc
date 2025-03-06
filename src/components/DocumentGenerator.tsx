@@ -22,7 +22,19 @@ interface Institution {
 type Language = "hebrew" | "english";
 
 const DocumentGenerator: React.FC = () => {
-  const [language, setLanguage] = useState<Language>("hebrew");
+  const mentorsList = [
+    "Dr.Karim Abu-Affash",
+    "Dr.Irina Rabaev",
+    "Dr.Alexander Churkin",
+    "Dr.Natalia Vanetik",
+    "Dr.Hadas Chassidim",
+    "Dr.Marina Litvak",
+    "Dr.Yochai Twitto",
+    "Ms.Alona Kutsyy",
+    "Mr.Alexander Lazarovi",
+  ];
+  const [mentorCunter, setMentorCunter] = useState<number>(0);
+  const [language, setLanguage] = useState<Language>("english");
   const [title, setTitle] = useState("");
   const [students, setStudents] = useState<Student[]>([
     { name: "", email: "" },
@@ -31,7 +43,7 @@ const DocumentGenerator: React.FC = () => {
     { id: "1", name: "" },
   ]);
   const [mentors, setMentors] = useState<Mentor[]>([
-    { id: "1", title: 'ד"ר', name: "", institutionId: "1" },
+    { id: "1", title: "Dr.", name: "", institutionId: "1" },
   ]);
   const [keywords, setKeywords] = useState("");
   const [content, setContent] = useState("");
@@ -47,7 +59,7 @@ const DocumentGenerator: React.FC = () => {
   };
 
   // הגבלת מילים לפי שפה
-  const wordLimit = language === "hebrew" ? 200 : 300;
+  const wordLimit = language === "hebrew" ? 200 : 120;
   const isOverLimit = wordCount > wordLimit;
 
   // ספירת מילים בתוכן
@@ -80,13 +92,26 @@ const DocumentGenerator: React.FC = () => {
       setStudents(updatedStudents);
     }
   };
-
+  // הוספת מנחה חדש
+  const addMentor = (institutionId: string) => {
+    const newId = Date.now().toString();
+    setMentors([
+      ...mentors,
+      {
+        id: newId,
+        title: language === "english" ? "Dr." : 'ד"ר',
+        name: "",
+        institutionId,
+      },
+    ]);
+  };
   // הוספת מוסד חדש
   const addInstitution = () => {
     const newId = (
       parseInt(institutions[institutions.length - 1].id) + 1
     ).toString();
     setInstitutions([...institutions, { id: newId, name: "" }]);
+    addMentor(newId);
   };
 
   // עדכון שם מוסד
@@ -110,20 +135,6 @@ const DocumentGenerator: React.FC = () => {
       );
       setMentors(updatedMentors);
     }
-  };
-
-  // הוספת מנחה חדש
-  const addMentor = (institutionId: string) => {
-    const newId = Date.now().toString();
-    setMentors([
-      ...mentors,
-      {
-        id: newId,
-        title: language === "hebrew" ? 'ד"ר' : "Dr.",
-        name: "",
-        institutionId,
-      },
-    ]);
   };
 
   // עדכון פרטי מנחה
@@ -222,17 +233,17 @@ const DocumentGenerator: React.FC = () => {
 
             let studentLine = formattedName;
             if (student.email) {
-              studentLine += ` ; ${student.email.toLowerCase()}`; // אימייל באותיות קטנות
+              studentLine += ` ; ${student.email.toLowerCase()} \n`; // אימייל באותיות קטנות
             }
             return studentLine;
           });
 
           studentsHtml = `
-            <p class="students-header">Students:</p>
-            <p class="student-line">${formattedStudents.join(" ; ")}</p>
+            <p class="students-header"></p>
+            <p class="student-line">${formattedStudents.join(" <br> ")}</p>
           `;
         } else {
-          studentsHtml = `<p class="students-header">שמות הסטודנטים:</p>`;
+          studentsHtml = `<p class="students-header"></p>`;
           validStudents.forEach((student) => {
             let studentLine = student.name;
             if (student.email) {
@@ -247,45 +258,125 @@ const DocumentGenerator: React.FC = () => {
       let mentorsAndInstitutionsHtml = "";
 
       // קיבוץ מנחים לפי מוסד
-      institutions.forEach((institution) => {
-        const institutionMentors = mentors.filter(
-          (m) => m.institutionId === institution.id && m.name.trim()
-        );
+      // בדיקה האם יש יותר ממוסד אחד עם מנחים
+      const institutionsWithMentors = institutions.filter(
+        (institution) =>
+          mentors.some(
+            (m) => m.institutionId === institution.id && m.name.trim()
+          ) && institution.name.trim()
+      );
+      const hasMultipleInstitutions = institutionsWithMentors.length > 1;
 
-        if (institutionMentors.length > 0 && institution.name.trim()) {
-          let institutionHtml = "";
+      // יצירת מפה למנחים כדי להקצות להם מספרי מוסדות
+      const mentorInstitutionMap = new Map();
+      let institutionCounter = 1;
 
-          // הוספת שמות המנחים
-          institutionMentors.forEach((mentor, index) => {
-            if (language === "english") {
-              // פורמט אנגלית
-              institutionHtml += `<p class="mentor">`;
-              if (index === 0) {
-                institutionHtml += `<strong>Supervised by:</strong> `;
-              } else {
-                institutionHtml += `<strong>Co-supervised by:</strong> `;
-              }
-              institutionHtml += `${mentor.title} ${mentor.name}</p>`;
+      // הקצאת מספרי מוסדות למנחים אם יש יותר ממוסד אחד
+      if (hasMultipleInstitutions) {
+        institutionsWithMentors.forEach((institution) => {
+          // מציאת כל המנחים השייכים למוסד הנוכחי
+          const institutionMentors = mentors.filter(
+            (m) => m.institutionId === institution.id && m.name.trim()
+          );
+
+          // הקצאת מספר המוסד לכל מנחה במוסד זה
+          institutionMentors.forEach((mentor) => {
+            mentorInstitutionMap.set(mentor.id, institutionCounter);
+          });
+
+          institutionCounter++;
+        });
+      }
+
+      // יצירת רשימת מנחים (כולם בשורה אחת)
+      let mentorsHtml = "";
+      if (language === "english") {
+        // פורמט באנגלית
+        mentorsHtml += `<p class="mentor"><strong>Advisor${
+          mentors.length > 1 ? "s" : ""
+        }:</strong> `;
+
+        // סינון מנחים שיש להם שם ועיבוד כל מנחה
+        mentors
+          .filter((m) => m.name.trim())
+          .forEach((mentor, index, filteredMentors) => {
+            // הוספת שם המנחה עם התואר המתאים
+            if (
+              mentor.name.includes("Mr.") ||
+              mentor.name.includes("Dr.") ||
+              mentor.name.includes("Ms.") ||
+              mentor.name.includes("Prof.")
+            ) {
+              // אם התואר כבר כלול בשם, לא צריך להוסיף אותו שוב
+              mentorsHtml += `${mentor.name}`;
             } else {
-              // פורמט עברית
-              if (index === 0) {
-                institutionHtml += `<p class="mentor">בהנחיית: ${mentor.title} ${mentor.name}</p>`;
-              } else {
-                institutionHtml += `<p class="mentor">ובהנחיית: ${mentor.title} ${mentor.name}</p>`;
-              }
+              mentorsHtml += `${mentor.title} ${mentor.name}`;
+            }
+
+            // הוספת מספר עילי אם יש יותר ממוסד אחד
+            if (hasMultipleInstitutions) {
+              mentorsHtml += `<sup>${mentorInstitutionMap.get(
+                mentor.id
+              )}</sup>`;
+            }
+
+            // הוספת פסיק או סיום הרשימה
+            if (index < filteredMentors.length - 1) {
+              mentorsHtml += ", ";
             }
           });
 
-          // הוספת שם המוסד
-          if (language === "english") {
-            institutionHtml += `<p class="institution"><span class="institution-name">${institution.name.toUpperCase()}</span></p>`;
-          } else {
-            institutionHtml += `<p class="institution">${institution.name}</p>`;
-          }
+        mentorsHtml += `</p>`;
+      } else {
+        // פורמט בעברית
+        mentorsHtml += `<p class="mentor">בהנחיית: `;
 
-          mentorsAndInstitutionsHtml += `<div class="institution-group">${institutionHtml}</div>`;
+        // סינון מנחים שיש להם שם ועיבוד כל מנחה
+        mentors
+          .filter((m) => m.name.trim())
+          .forEach((mentor, index, filteredMentors) => {
+            mentorsHtml += `${mentor.title} ${mentor.name}`;
+
+            // הוספת מספר עילי אם יש יותר ממוסד אחד
+            if (hasMultipleInstitutions) {
+              mentorsHtml += `<sup>${mentorInstitutionMap.get(
+                mentor.id
+              )}</sup>`;
+            }
+
+            // הוספת פסיק או סיום הרשימה
+            if (index < filteredMentors.length - 1) {
+              mentorsHtml += ", ";
+            }
+          });
+
+        mentorsHtml += `</p>`;
+      }
+
+      // יצירת רשימת מוסדות (כל אחד בשורה נפרדת)
+      let institutionsHtml = "";
+      institutionsWithMentors.forEach((institution, index) => {
+        if (language === "english") {
+          // פורמט באנגלית
+          institutionsHtml += `<p class="institution">`;
+          // הוספת מספר עילי ליד שם המוסד אם יש יותר ממוסד אחד
+          if (hasMultipleInstitutions) {
+            institutionsHtml += `<sup>${index + 1}</sup>`;
+          }
+          institutionsHtml += `<span class="institution-name">${institution.name}</span></p>`;
+        } else {
+          // פורמט בעברית
+          institutionsHtml += `<p class="institution">`;
+          // הוספת מספר עילי ליד שם המוסד אם יש יותר ממוסד אחד
+          if (hasMultipleInstitutions) {
+            institutionsHtml += `<sup>${index + 1}</sup>`;
+          }
+          institutionsHtml += `${institution.name}</p>`;
         }
       });
+
+      // שילוב רשימת המנחים והמוסדות
+      mentorsAndInstitutionsHtml += `<div class="institution-group">${mentorsHtml}${institutionsHtml}</div>`;
 
       // עיבוד תוכן המסמך
       const formattedContent =
@@ -339,14 +430,17 @@ const DocumentGenerator: React.FC = () => {
               margin-bottom: 20pt;
             }
             .students-header, .keywords-header {
+              text-align: center;
               font-weight: bold;
               margin-top: 15pt;
               margin-bottom: 5pt;
             }
             .student-line {
+            text-align: center;
               margin-bottom: 8pt;
             }
             .institution-group {
+              text-align: center;
               margin-top: 15pt;
               margin-bottom: 15pt;
             }
@@ -359,7 +453,6 @@ const DocumentGenerator: React.FC = () => {
             }
             .institution-name {
               font-weight: bold;
-              background-color: yellow;
             }
             .keywords {
               margin-bottom: 8pt;
@@ -376,12 +469,12 @@ const DocumentGenerator: React.FC = () => {
             (language === "english" ? "Untitled Document" : "מסמך ללא כותרת")
           }</div>
           ${studentsHtml}
-          ${mentorsAndInstitutionsHtml}
-          ${keywordsHtml}
+          ${mentorsAndInstitutionsHtml}       
           <div class="content">${
             formattedContent ||
             (language === "english" ? "Sample content" : "תוכן לדוגמה")
           }</div>
+          ${keywordsHtml}
         </body>
         </html>
       `;
@@ -470,7 +563,7 @@ const DocumentGenerator: React.FC = () => {
                 <li>Font: Times New Roman</li>
                 <li>Title Size: 18pt</li>
                 <li>Text Direction: Left to Right</li>
-                <li>Content Limit: Up to 300 words</li>
+                <li>Content Limit: Up to 120 words</li>
               </ul>
             </div>
           )}
@@ -560,6 +653,24 @@ const DocumentGenerator: React.FC = () => {
                     }
                     dir={language === "english" ? "ltr" : "rtl"}
                   />
+                  {/* כפתור SCE חדש */}
+                  <button
+                    type="button"
+                    className="sce-button"
+                    onClick={() =>
+                      updateInstitution(
+                        institution.id,
+                        "SCE - Shamoon College of Engineering, Be'er-Sheva"
+                      )
+                    }
+                    title={
+                      language === "hebrew"
+                        ? "הוסף את המכללה האקדמית להנדסה סמי שמעון"
+                        : "Add Shamoon College of Engineering"
+                    }
+                  >
+                    SCE
+                  </button>
                   {institutions.length > 1 && (
                     <button
                       type="button"
@@ -578,36 +689,80 @@ const DocumentGenerator: React.FC = () => {
               <h3 className="subsection-title">
                 {language === "hebrew" ? "מנחים:" : "Mentors:"}
               </h3>
-
               {mentors
                 .filter((mentor) => mentor.institutionId === institution.id)
                 .map((mentor) => (
                   <div key={mentor.id} className="mentor-row">
-                    <select
-                      value={mentor.title}
-                      onChange={(e) =>
-                        updateMentor(mentor.id, "title", e.target.value)
-                      }
-                      className="mentor-title"
-                    >
-                      {mentorTitles[language].map((title) => (
-                        <option key={title} value={title}>
-                          {title}
+                    {/* בחירה מרשימה - תוצג רק אם אין טקסט חופשי או נבחר מרצה מהרשימה */}
+                    {(!mentor.name || mentorsList.includes(mentor.name)) && (
+                      <select
+                        id="mentorSelect"
+                        name="mentorSelect"
+                        onChange={(e) => {
+                          if (e.target.value !== "custom") {
+                            // אם נבחר מרצה מהרשימה, עדכן את השם
+                            updateMentor(mentor.id, "name", e.target.value);
+                          } else {
+                            // אם נבחרה האופציה "בחר מרצה", נקה את שדה השם
+                            updateMentor(mentor.id, "name", "");
+                          }
+                        }}
+                        value={
+                          mentorsList.includes(mentor.name)
+                            ? mentor.name
+                            : "custom"
+                        }
+                      >
+                        <option value="custom">
+                          {language === "hebrew"
+                            ? "בחר מרצה מהרשימה"
+                            : "Choose a lecturer"}
                         </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={mentor.name}
-                      onChange={(e) =>
-                        updateMentor(mentor.id, "name", e.target.value)
-                      }
-                      placeholder={
-                        language === "hebrew" ? "שם המנחה" : "Mentor name"
-                      }
-                      className="mentor-name"
-                      dir={language === "english" ? "ltr" : "rtl"}
-                    />
+                        {mentorsList.map((mentorName) => (
+                          <option key={mentorName} value={mentorName}>
+                            {mentorName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* מילה "או" - תוצג רק אם שני השדות מוצגים */}
+                    {(!mentor.name || mentorsList.includes(mentor.name)) &&
+                      mentor.name === "" && (
+                        <p> {language === "hebrew" ? "או" : "or"} </p>
+                      )}
+
+                    {/* שדה טקסט חופשי - יוצג רק אם אין בחירה מהרשימה או השדה ריק */}
+                    {(!mentor.name || !mentorsList.includes(mentor.name)) && (
+                      <>
+                        <input
+                          type="text"
+                          value={mentor.name}
+                          onChange={(e) => {
+                            const newValue = e.target.value;
+                            updateMentor(mentor.id, "name", newValue);
+                          }}
+                          placeholder={
+                            language === "hebrew" ? "שם המנחה" : "Mentor name"
+                          }
+                          className="mentor-name"
+                          dir={language === "english" ? "ltr" : "rtl"}
+                        />
+                        <select
+                          value={mentor.title}
+                          onChange={(e) =>
+                            updateMentor(mentor.id, "title", e.target.value)
+                          }
+                          className="mentor-title"
+                        >
+                          {mentorTitles[language].map((title) => (
+                            <option key={title} value={title}>
+                              {title}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                     {mentors.filter((m) => m.institutionId === institution.id)
                       .length > 1 && (
                       <button
