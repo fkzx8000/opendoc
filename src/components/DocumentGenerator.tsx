@@ -1,5 +1,5 @@
 // src/components/DocumentGenerator.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "../styles/DocumentGenerator.css";
 
 interface Student {
@@ -19,6 +19,13 @@ interface Institution {
   name: string;
 }
 
+// New interface for confirmation dialog
+interface ConfirmationDialog {
+  isOpen: boolean;
+  message: string;
+  onConfirm: () => void;
+}
+
 type Language = "hebrew" | "english";
 
 const DocumentGenerator: React.FC = () => {
@@ -33,7 +40,8 @@ const DocumentGenerator: React.FC = () => {
     "Ms.Alona Kutsyy",
     "Mr.Alexander Lazarovi",
   ];
-  const [mentorCunter, setMentorCunter] = useState<number>(0);
+
+  // State variables
   const [language, setLanguage] = useState<Language>("english");
   const [title, setTitle] = useState("");
   const [students, setStudents] = useState<Student[]>([
@@ -52,6 +60,26 @@ const DocumentGenerator: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New state variables for UI protection
+  const [isDirty, setIsDirty] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [isAutosaving, setIsAutosaving] = useState(false);
+  const [confirmationDialog, setConfirmationDialog] =
+    useState<ConfirmationDialog>({
+      isOpen: false,
+      message: "",
+      onConfirm: () => {},
+    });
+
+  // Validation states
+  const [titleError, setTitleError] = useState(false);
+  const [studentError, setStudentError] = useState(false);
+  const [contentError, setContentError] = useState(false);
+
+  // References
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
   // אפשרויות תואר למנחים
   const mentorTitles = {
     hebrew: ["מר", "גב'", 'ד"ר', "פרופסור"],
@@ -68,9 +96,175 @@ const DocumentGenerator: React.FC = () => {
     setWordCount(content.trim() ? words.length : 0);
   }, [content]);
 
+  // Load saved data on component mount
+  useEffect(() => {
+    loadSavedData();
+  }, []);
+
+  // Setup beforeunload event listener for unsaved changes warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        const message =
+          language === "hebrew"
+            ? "יש לך שינויים שלא נשמרו. האם אתה בטוח שברצונך לעזוב?"
+            : "You have unsaved changes. Are you sure you want to leave?";
+        e.returnValue = message;
+        return message;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty, language]);
+
+  // Autosave functionality
+  useEffect(() => {
+    if (isDirty) {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+
+      setIsAutosaving(true);
+
+      autosaveTimeoutRef.current = setTimeout(() => {
+        saveFormData();
+        setIsAutosaving(false);
+        setLastSaved(new Date());
+        setIsDirty(false);
+      }, 2000);
+    }
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [
+    title,
+    students,
+    institutions,
+    mentors,
+    keywords,
+    content,
+    language,
+    isDirty,
+  ]);
+
+  // Mark form as dirty
+  const setFormDirty = () => {
+    setIsDirty(true);
+  };
+
+  // Load saved data from localStorage
+  const loadSavedData = () => {
+    try {
+      const savedData = localStorage.getItem("documentGeneratorData");
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+
+        setLanguage(parsedData.language || "english");
+        setTitle(parsedData.title || "");
+
+        if (parsedData.students && parsedData.students.length > 0) {
+          setStudents(parsedData.students);
+        }
+
+        if (parsedData.institutions && parsedData.institutions.length > 0) {
+          setInstitutions(parsedData.institutions);
+        }
+
+        if (parsedData.mentors && parsedData.mentors.length > 0) {
+          setMentors(parsedData.mentors);
+        }
+
+        setKeywords(parsedData.keywords || "");
+        setContent(parsedData.content || "");
+
+        const savedDate = parsedData.lastSaved
+          ? new Date(parsedData.lastSaved)
+          : null;
+        setLastSaved(savedDate);
+      }
+    } catch (error) {
+      console.error("Error loading saved data:", error);
+    }
+  };
+
+  // Save form data to localStorage
+  const saveFormData = () => {
+    try {
+      const formData = {
+        language,
+        title,
+        students,
+        institutions,
+        mentors,
+        keywords,
+        content,
+        lastSaved: new Date().toISOString(),
+      };
+
+      localStorage.setItem("documentGeneratorData", JSON.stringify(formData));
+    } catch (error) {
+      console.error("Error saving form data:", error);
+    }
+  };
+
+  // Reset form data
+  const resetForm = () => {
+    showConfirmationDialog(
+      language === "hebrew"
+        ? "האם אתה בטוח שברצונך לאפס את הטופס? כל הנתונים יימחקו."
+        : "Are you sure you want to reset the form? All data will be deleted.",
+      () => {
+        setTitle("");
+        setStudents([{ name: "", email: "" }]);
+        setInstitutions([{ id: "1", name: "" }]);
+        setMentors([
+          {
+            id: "1",
+            title: language === "hebrew" ? 'ד"ר' : "Dr.",
+            name: "",
+            institutionId: "1",
+          },
+        ]);
+        setKeywords("");
+        setContent("");
+        setError(null);
+        setSuccess(false);
+        setTitleError(false);
+        setStudentError(false);
+        setContentError(false);
+
+        localStorage.removeItem("documentGeneratorData");
+        setLastSaved(null);
+        setIsDirty(false);
+      }
+    );
+  };
+
+  // Show confirmation dialog
+  const showConfirmationDialog = (message: string, onConfirm: () => void) => {
+    setConfirmationDialog({
+      isOpen: true,
+      message,
+      onConfirm,
+    });
+  };
+
+  // Close confirmation dialog
+  const closeConfirmationDialog = () => {
+    setConfirmationDialog({
+      ...confirmationDialog,
+      isOpen: false,
+    });
+  };
+
   // הוספת סטודנט חדש
   const addStudent = () => {
     setStudents([...students, { name: "", email: "" }]);
+    setFormDirty();
   };
 
   // עדכון פרטי סטודנט
@@ -82,16 +276,49 @@ const DocumentGenerator: React.FC = () => {
     const updatedStudents = [...students];
     updatedStudents[index][field] = value;
     setStudents(updatedStudents);
+
+    // Reset student error if at least one student has a name
+    if (field === "name" && value.trim() !== "") {
+      setStudentError(false);
+    }
+
+    setFormDirty();
   };
 
   // הסרת סטודנט
   const removeStudent = (index: number) => {
-    if (students.length > 1) {
+    // If this is the last student or the student has data, show confirmation
+    if (
+      students.length === 1 ||
+      students[index].name ||
+      students[index].email
+    ) {
+      showConfirmationDialog(
+        language === "hebrew"
+          ? "האם אתה בטוח שברצונך להסיר את הסטודנט הזה?"
+          : "Are you sure you want to remove this student?",
+        () => {
+          if (students.length === 1) {
+            // If it's the last student, reset it instead of removing
+            setStudents([{ name: "", email: "" }]);
+          } else {
+            // Remove the student
+            const updatedStudents = [...students];
+            updatedStudents.splice(index, 1);
+            setStudents(updatedStudents);
+          }
+          setFormDirty();
+        }
+      );
+    } else if (students.length > 1) {
+      // Remove without confirmation if there are multiple students and this one has no data
       const updatedStudents = [...students];
       updatedStudents.splice(index, 1);
       setStudents(updatedStudents);
+      setFormDirty();
     }
   };
+
   // הוספת מנחה חדש
   const addMentor = (institutionId: string) => {
     const newId = Date.now().toString();
@@ -104,7 +331,9 @@ const DocumentGenerator: React.FC = () => {
         institutionId,
       },
     ]);
+    setFormDirty();
   };
+
   // הוספת מוסד חדש
   const addInstitution = () => {
     const newId = (
@@ -112,6 +341,7 @@ const DocumentGenerator: React.FC = () => {
     ).toString();
     setInstitutions([...institutions, { id: newId, name: "" }]);
     addMentor(newId);
+    setFormDirty();
   };
 
   // עדכון שם מוסד
@@ -120,20 +350,57 @@ const DocumentGenerator: React.FC = () => {
       inst.id === id ? { ...inst, name } : inst
     );
     setInstitutions(updatedInstitutions);
+    setFormDirty();
   };
 
   // הסרת מוסד
   const removeInstitution = (id: string) => {
-    if (institutions.length > 1) {
-      // הסרת המוסד
-      const updatedInstitutions = institutions.filter((inst) => inst.id !== id);
-      setInstitutions(updatedInstitutions);
+    // Check if institution has data or if it's the last one
+    const institution = institutions.find((inst) => inst.id === id);
+    const hasData =
+      institution?.name ||
+      mentors.some((m) => m.institutionId === id && m.name);
 
-      // הסרת מנחים ששייכים למוסד זה
+    if (institutions.length === 1 || hasData) {
+      showConfirmationDialog(
+        language === "hebrew"
+          ? "האם אתה בטוח שברצונך להסיר את המוסד הזה וכל המנחים שלו?"
+          : "Are you sure you want to remove this institution and all its mentors?",
+        () => {
+          if (institutions.length === 1) {
+            // If it's the last institution, reset it
+            setInstitutions([{ id: "1", name: "" }]);
+            setMentors([
+              {
+                id: "1",
+                title: language === "hebrew" ? 'ד"ר' : "Dr.",
+                name: "",
+                institutionId: "1",
+              },
+            ]);
+          } else {
+            // Remove the institution and its mentors
+            const updatedInstitutions = institutions.filter(
+              (inst) => inst.id !== id
+            );
+            const updatedMentors = mentors.filter(
+              (mentor) => mentor.institutionId !== id
+            );
+            setInstitutions(updatedInstitutions);
+            setMentors(updatedMentors);
+          }
+          setFormDirty();
+        }
+      );
+    } else if (institutions.length > 1) {
+      // Remove without confirmation
+      const updatedInstitutions = institutions.filter((inst) => inst.id !== id);
       const updatedMentors = mentors.filter(
         (mentor) => mentor.institutionId !== id
       );
+      setInstitutions(updatedInstitutions);
       setMentors(updatedMentors);
+      setFormDirty();
     }
   };
 
@@ -147,6 +414,7 @@ const DocumentGenerator: React.FC = () => {
       mentor.id === id ? { ...mentor, [field]: value } : mentor
     );
     setMentors(updatedMentors);
+    setFormDirty();
   };
 
   // הסרת מנחה
@@ -159,9 +427,40 @@ const DocumentGenerator: React.FC = () => {
       (m) => m.institutionId === mentorToRemove.institutionId
     );
 
-    if (mentorsInSameInstitution.length > 1) {
+    // Check if mentor has data or if it's the last one in the institution
+    const hasData = mentorToRemove.name;
+
+    if (mentorsInSameInstitution.length === 1 || hasData) {
+      showConfirmationDialog(
+        language === "hebrew"
+          ? "האם אתה בטוח שברצונך להסיר את המנחה הזה?"
+          : "Are you sure you want to remove this mentor?",
+        () => {
+          if (mentorsInSameInstitution.length === 1) {
+            // If it's the last mentor for this institution, reset it
+            const updatedMentors = mentors.map((m) =>
+              m.id === id
+                ? {
+                    ...m,
+                    name: "",
+                    title: language === "hebrew" ? 'ד"ר' : "Dr.",
+                  }
+                : m
+            );
+            setMentors(updatedMentors);
+          } else {
+            // Remove the mentor
+            const updatedMentors = mentors.filter((mentor) => mentor.id !== id);
+            setMentors(updatedMentors);
+          }
+          setFormDirty();
+        }
+      );
+    } else if (mentorsInSameInstitution.length > 1) {
+      // Remove without confirmation
       const updatedMentors = mentors.filter((mentor) => mentor.id !== id);
       setMentors(updatedMentors);
+      setFormDirty();
     }
   };
 
@@ -176,12 +475,63 @@ const DocumentGenerator: React.FC = () => {
       title: newLanguage === "hebrew" ? 'ד"ר' : "Dr.",
     }));
     setMentors(updatedMentors);
+    setFormDirty();
+  };
+
+  // Form validation
+  const validateForm = (): boolean => {
+    let isValid = true;
+
+    // Reset all error states
+    setTitleError(false);
+    setStudentError(false);
+    setContentError(false);
+
+    // Title validation
+    if (!title.trim()) {
+      setTitleError(true);
+      isValid = false;
+    }
+
+    // Student validation - at least one student must have a name
+    if (!students.some((student) => student.name.trim())) {
+      setStudentError(true);
+      isValid = false;
+    }
+
+    // Content validation
+    if (!content.trim()) {
+      setContentError(true);
+      isValid = false;
+    }
+
+    // Word limit validation
+    if (isOverLimit) {
+      setContentError(true);
+      isValid = false;
+    }
+
+    return isValid;
   };
 
   // יצירת והורדת המסמך
   const generateDocument = () => {
-    if (isOverLimit) {
-      setError(`התוכן חורג ממגבלת ${wordLimit} המילים`);
+    // Validate form before generating
+    if (!validateForm()) {
+      setError(
+        language === "hebrew"
+          ? "אנא מלא את כל השדות הנדרשים וודא שהתוכן אינו חורג ממגבלת המילים"
+          : "Please fill in all required fields and ensure content is within word limit"
+      );
+
+      // Scroll to the first error
+      if (formRef.current) {
+        const errorElement = formRef.current.querySelector(".error");
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
       return;
     }
 
@@ -513,31 +863,45 @@ const DocumentGenerator: React.FC = () => {
   };
 
   return (
-    <div className="document-generator">
-      <h1>יוצר מסמכי וורד</h1>
+    <div
+      className="document-generator"
+      ref={formRef}
+      dir={language === "english" ? "ltr" : "rtl"}
+    >
+      <h1>
+        {language === "hebrew" ? "יוצר מסמכי וורד" : "Word Document Generator"}
+      </h1>
 
-      <div className="form-section language-section">
-        <h2 className="section-title">שפת המסמך</h2>
+      {/* <div className="form-section language-section">
+        <h2 className="section-title">
+          {language === "hebrew" ? "שפת המסמך" : "Document Language"}
+        </h2>
         <div className="language-options">
-          <label>
+          <label
+            className={`${language === "hebrew" ? "active disabled" : ""}`}
+          >
             <input
               type="radio"
               name="language"
               value="hebrew"
               checked={language === "hebrew"}
               onChange={handleLanguageChange}
+              disabled={language === "hebrew"}
             />
             עברית
           </label>
-          <label>
+          <label
+            className={`${language === "english" ? "active english-mode" : ""}`}
+          >
             <input
               type="radio"
               name="language"
               value="english"
               checked={language === "english"}
               onChange={handleLanguageChange}
+              disabled={language === "english"}
             />
-            אנגלית
+            English
           </label>
         </div>
 
@@ -568,27 +932,47 @@ const DocumentGenerator: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
+      </div> */}
 
       <div className="form-section">
-        <h2 className="section-title">פרטי מסמך</h2>
+        <h2 className="section-title">
+          {language === "hebrew" ? "פרטי מסמך" : "Document Details"}
+        </h2>
         <div className="form-group">
-          <label htmlFor="title">כותרת:</label>
+          <label htmlFor="title">
+            {language === "hebrew" ? "כותרת:" : "Title:"}
+            <span className="required-field">*</span>
+          </label>
           <input
             id="title"
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setTitleError(false);
+              setFormDirty();
+            }}
             placeholder={
               language === "hebrew" ? "הזן כותרת כאן" : "Enter title here"
             }
             dir={language === "english" ? "ltr" : "rtl"}
+            className={titleError ? "error" : ""}
+            aria-required="true"
           />
+          {titleError && (
+            <div className="field-error">
+              {language === "hebrew"
+                ? "נא להזין כותרת"
+                : "Please enter a title"}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="form-section">
-        <h2 className="section-title">פרטי סטודנטים</h2>
+        <h2 className="section-title">
+          {language === "hebrew" ? "פרטי סטודנטים" : "Student Details"}
+        </h2>
         {students.map((student, index) => (
           <div key={index} className="student-row">
             <input
@@ -598,8 +982,9 @@ const DocumentGenerator: React.FC = () => {
               placeholder={
                 language === "hebrew" ? "שם הסטודנט" : "Student name"
               }
-              className="student-name"
+              className={`student-name ${studentError ? "error" : ""}`}
               dir={language === "english" ? "ltr" : "rtl"}
+              aria-required="true"
             />
             <input
               type="email"
@@ -616,20 +1001,36 @@ const DocumentGenerator: React.FC = () => {
                 type="button"
                 className="remove-button"
                 onClick={() => removeStudent(index)}
-                aria-label="הסר סטודנט"
+                aria-label={
+                  language === "hebrew" ? "הסר סטודנט" : "Remove student"
+                }
+                title={language === "hebrew" ? "הסר סטודנט" : "Remove student"}
               >
                 ×
               </button>
             )}
           </div>
         ))}
-        <button type="button" className="add-button" onClick={addStudent}>
+        {studentError && (
+          <div className="field-error">
+            {language === "hebrew"
+              ? "נא להזין לפחות שם סטודנט אחד"
+              : "Please enter at least one student name"}
+          </div>
+        )}
+        <button
+          type="button"
+          className="add-button institution-button"
+          onClick={addStudent}
+        >
           {language === "hebrew" ? "הוסף סטודנט" : "Add Student"}
         </button>
       </div>
 
       <div className="form-section">
-        <h2 className="section-title">מנחים ומוסדות</h2>
+        <h2 className="section-title">
+          {language === "hebrew" ? "מנחים ומוסדות" : "Mentors & Institutions"}
+        </h2>
 
         {institutions.map((institution) => (
           <div key={institution.id} className="institution-block">
@@ -653,7 +1054,7 @@ const DocumentGenerator: React.FC = () => {
                     }
                     dir={language === "english" ? "ltr" : "rtl"}
                   />
-                  {/* כפתור SCE חדש */}
+                  {/* כפתור SCE  */}
                   <button
                     type="button"
                     className="sce-button"
@@ -676,7 +1077,16 @@ const DocumentGenerator: React.FC = () => {
                       type="button"
                       className="remove-button"
                       onClick={() => removeInstitution(institution.id)}
-                      aria-label="הסר מוסד"
+                      aria-label={
+                        language === "hebrew"
+                          ? "הסר מוסד"
+                          : "Remove institution"
+                      }
+                      title={
+                        language === "hebrew"
+                          ? "הסר מוסד"
+                          : "Remove institution"
+                      }
                     >
                       ×
                     </button>
@@ -696,7 +1106,7 @@ const DocumentGenerator: React.FC = () => {
                     {/* בחירה מרשימה - תוצג רק אם אין טקסט חופשי או נבחר מרצה מהרשימה */}
                     {(!mentor.name || mentorsList.includes(mentor.name)) && (
                       <select
-                        id="mentorSelect"
+                        id={`mentorSelect-${mentor.id}`}
                         name="mentorSelect"
                         onChange={(e) => {
                           if (e.target.value !== "custom") {
@@ -711,6 +1121,9 @@ const DocumentGenerator: React.FC = () => {
                           mentorsList.includes(mentor.name)
                             ? mentor.name
                             : "custom"
+                        }
+                        className={
+                          language === "english" ? "english-focus" : ""
                         }
                       >
                         <option value="custom">
@@ -729,7 +1142,10 @@ const DocumentGenerator: React.FC = () => {
                     {/* מילה "או" - תוצג רק אם שני השדות מוצגים */}
                     {(!mentor.name || mentorsList.includes(mentor.name)) &&
                       mentor.name === "" && (
-                        <p> {language === "hebrew" ? "או" : "or"} </p>
+                        <p className="or-text">
+                          {" "}
+                          {language === "hebrew" ? "או" : "or"}{" "}
+                        </p>
                       )}
 
                     {/* שדה טקסט חופשי - יוצג רק אם אין בחירה מהרשימה או השדה ריק */}
@@ -745,7 +1161,9 @@ const DocumentGenerator: React.FC = () => {
                           placeholder={
                             language === "hebrew" ? "שם המנחה" : "Mentor name"
                           }
-                          className="mentor-name"
+                          className={`mentor-name ${
+                            language === "english" ? "english-focus" : ""
+                          }`}
                           dir={language === "english" ? "ltr" : "rtl"}
                         />
                         <select
@@ -753,7 +1171,9 @@ const DocumentGenerator: React.FC = () => {
                           onChange={(e) =>
                             updateMentor(mentor.id, "title", e.target.value)
                           }
-                          className="mentor-title"
+                          className={`mentor-title ${
+                            language === "english" ? "english-focus" : ""
+                          }`}
                         >
                           {mentorTitles[language].map((title) => (
                             <option key={title} value={title}>
@@ -769,7 +1189,12 @@ const DocumentGenerator: React.FC = () => {
                         type="button"
                         className="remove-button"
                         onClick={() => removeMentor(mentor.id)}
-                        aria-label="הסר מנחה"
+                        aria-label={
+                          language === "hebrew" ? "הסר מנחה" : "Remove mentor"
+                        }
+                        title={
+                          language === "hebrew" ? "הסר מנחה" : "Remove mentor"
+                        }
                       >
                         ×
                       </button>
@@ -779,7 +1204,7 @@ const DocumentGenerator: React.FC = () => {
 
               <button
                 type="button"
-                className="add-button small-button"
+                className="add-button institution-button small-button"
                 onClick={() => addMentor(institution.id)}
               >
                 {language === "hebrew" ? "+ הוסף מנחה" : "+ Add mentor"}
@@ -790,7 +1215,7 @@ const DocumentGenerator: React.FC = () => {
 
         <button
           type="button"
-          className="add-button institution-button"
+          className="add-button institution-button institution-button"
           onClick={addInstitution}
         >
           {language === "hebrew" ? "הוסף מוסד" : "Add Institution"}
@@ -798,7 +1223,9 @@ const DocumentGenerator: React.FC = () => {
       </div>
 
       <div className="form-section">
-        <h2 className="section-title">תוכן המסמך</h2>
+        <h2 className="section-title">
+          {language === "hebrew" ? "תוכן המסמך" : "Document Content"}
+        </h2>
         <div className="form-group">
           <label htmlFor="keywords">
             {language === "hebrew"
@@ -809,13 +1236,17 @@ const DocumentGenerator: React.FC = () => {
             id="keywords"
             type="text"
             value={keywords}
-            onChange={(e) => setKeywords(e.target.value)}
+            onChange={(e) => {
+              setKeywords(e.target.value);
+              setFormDirty();
+            }}
             placeholder={
               language === "hebrew"
                 ? "לדוגמה: מילה1, מילה2, מילה3"
                 : "Example: word1, word2, word3"
             }
             dir={language === "english" ? "ltr" : "rtl"}
+            className={language === "english" ? "english-focus" : ""}
           />
         </div>
 
@@ -824,18 +1255,26 @@ const DocumentGenerator: React.FC = () => {
             {language === "hebrew"
               ? `תוכן (עד ${wordLimit} מילים):`
               : `Content (up to ${wordLimit} words):`}
+            <span className="required-field">*</span>
           </label>
           <textarea
             id="content"
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              setContentError(false);
+              setFormDirty();
+            }}
             placeholder={
               language === "hebrew"
                 ? "הזן את התוכן כאן"
                 : "Enter your content here"
             }
-            className={isOverLimit ? "error" : ""}
+            className={`${contentError ? "error" : ""} ${
+              language === "english" ? "english-focus" : ""
+            }`}
             dir={language === "english" ? "ltr" : "rtl"}
+            aria-required="true"
           />
           <div
             className={`word-counter ${isOverLimit ? "limit-exceeded" : ""}`}
@@ -843,6 +1282,13 @@ const DocumentGenerator: React.FC = () => {
             <span>{wordCount}</span> / {wordLimit}{" "}
             {language === "hebrew" ? "מילים" : "words"}
           </div>
+          {contentError && !isOverLimit && (
+            <div className="field-error">
+              {language === "hebrew"
+                ? "נא להזין תוכן למסמך"
+                : "Please enter document content"}
+            </div>
+          )}
           {isOverLimit && (
             <div className="limit-warning">
               {language === "hebrew"
@@ -862,19 +1308,71 @@ const DocumentGenerator: React.FC = () => {
         </div>
       )}
 
-      <button
-        onClick={generateDocument}
-        disabled={isGenerating || isOverLimit}
-        className="generate-button"
-      >
-        {isGenerating
-          ? language === "hebrew"
-            ? "מייצר מסמך..."
-            : "Generating document..."
-          : language === "hebrew"
-          ? "צור מסמך"
-          : "Generate Document"}
-      </button>
+      <div className="buttons-container">
+        <button
+          onClick={generateDocument}
+          disabled={isGenerating || isOverLimit}
+          className="generate-button"
+        >
+          {isGenerating
+            ? language === "hebrew"
+              ? "מייצר מסמך..."
+              : "Generating document..."
+            : language === "hebrew"
+            ? "צור מסמך"
+            : "Generate Document"}
+        </button>
+
+        <button
+          type="button"
+          className="add-button institution-button small-button"
+          onClick={resetForm}
+        >
+          {language === "hebrew" ? "אפס טופס" : "Reset Form"}
+        </button>
+      </div>
+
+      {/* Autosave Indicator */}
+      {(isAutosaving || lastSaved) && (
+        <div className={`autosave-indicator ${isAutosaving ? "saving" : ""}`}>
+          {isAutosaving
+            ? language === "hebrew"
+              ? "שומר שינויים..."
+              : "Saving changes..."
+            : language === "hebrew"
+            ? `נשמר לאחרונה: ${lastSaved.toLocaleTimeString()}`
+            : `Last saved: ${lastSaved.toLocaleTimeString()}`}
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmationDialog.isOpen && (
+        <div className="confirmation-overlay">
+          <div className="confirmation-dialog">
+            <h3 className="confirmation-title">
+              {language === "hebrew" ? "אישור פעולה" : "Confirm Action"}
+            </h3>
+            <p className="confirmation-message">{confirmationDialog.message}</p>
+            <div className="confirmation-buttons">
+              <button
+                className="cancel-button"
+                onClick={closeConfirmationDialog}
+              >
+                {language === "hebrew" ? "ביטול" : "Cancel"}
+              </button>
+              <button
+                className="confirm-button"
+                onClick={() => {
+                  confirmationDialog.onConfirm();
+                  closeConfirmationDialog();
+                }}
+              >
+                {language === "hebrew" ? "אישור" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

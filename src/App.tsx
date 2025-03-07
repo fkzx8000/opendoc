@@ -3,7 +3,7 @@ import "./styles/App.css";
 
 function App() {
   return (
-    <div className="app" dir="rtl">
+    <div className="app">
       <DocumentGenerator />
     </div>
   );
