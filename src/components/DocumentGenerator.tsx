@@ -464,19 +464,19 @@ const DocumentGenerator: React.FC = () => {
     }
   };
 
-  // שינוי שפה
-  const handleLanguageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newLanguage = e.target.value as Language;
-    setLanguage(newLanguage);
+  // // שינוי שפה
+  // const handleLanguageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const newLanguage = e.target.value as Language;
+  //   setLanguage(newLanguage);
 
-    // עדכון תארי המנחים לפי השפה
-    const updatedMentors = mentors.map((mentor) => ({
-      ...mentor,
-      title: newLanguage === "hebrew" ? 'ד"ר' : "Dr.",
-    }));
-    setMentors(updatedMentors);
-    setFormDirty();
-  };
+  //   // עדכון תארי המנחים לפי השפה
+  //   const updatedMentors = mentors.map((mentor) => ({
+  //     ...mentor,
+  //     title: newLanguage === "hebrew" ? 'ד"ר' : "Dr.",
+  //   }));
+  //   setMentors(updatedMentors);
+  //   setFormDirty();
+  // };
 
   // Form validation
   const validateForm = (): boolean => {
@@ -1340,8 +1340,8 @@ const DocumentGenerator: React.FC = () => {
               ? "שומר שינויים..."
               : "Saving changes..."
             : language === "hebrew"
-            ? `נשמר לאחרונה: ${lastSaved.toLocaleTimeString()}`
-            : `Last saved: ${lastSaved.toLocaleTimeString()}`}
+            ? `נשמר לאחרונה: ${lastSaved?.toLocaleTimeString()}`
+            : `Last saved: ${lastSaved?.toLocaleTimeString()}`}
         </div>
       )}
 
