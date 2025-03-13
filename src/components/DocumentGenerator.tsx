@@ -6,7 +6,11 @@ interface Student {
   name: string;
   email: string;
 }
-
+interface Department {
+  code: string;
+  startNumber: string;
+  endNumber: string;
+}
 interface Mentor {
   id: string;
   title: string; // מר, גב', ד"ר, פרופסור
@@ -73,7 +77,12 @@ const DocumentGenerator: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [department, setDepartment] = useState<Department>({
+    code: "SE",
+    startNumber: "",
+    endNumber: "",
+  });
+  const [departmentError, setDepartmentError] = useState(false);
   // New state variable for title text selection
   const [titleSelection, setTitleSelection] = useState<TitleSelection>({
     start: 0,
@@ -110,7 +119,7 @@ const DocumentGenerator: React.FC = () => {
     hebrew: ["מר", "גב'", 'ד"ר', "פרופסור"],
     english: ["Mr. ", "Ms. ", "Dr. ", "Prof. "],
   };
-
+  const departmentOptions = ["SE", "ChE", "IEM"];
   // הגבלת מילים לפי שפה
   const wordLimit = language === "hebrew" ? 200 : 120;
   const isOverLimit = wordCount > wordLimit;
@@ -198,6 +207,9 @@ const DocumentGenerator: React.FC = () => {
         if (parsedData.institutions && parsedData.institutions.length > 0) {
           setInstitutions(parsedData.institutions);
         }
+        if (parsedData.department) {
+          setDepartment(parsedData.department);
+        }
 
         if (parsedData.mentors && parsedData.mentors.length > 0) {
           setMentors(parsedData.mentors);
@@ -222,6 +234,7 @@ const DocumentGenerator: React.FC = () => {
       const formData = {
         language,
         title,
+        department, // Added this line
         students,
         institutions,
         mentors,
@@ -258,10 +271,15 @@ const DocumentGenerator: React.FC = () => {
         setContent("");
         setError(null);
         setSuccess(false);
+        setDepartment({
+          code: "SE",
+          startNumber: "",
+          endNumber: "",
+        });
         setTitleError(false);
         setStudentError(false);
         setContentError(false);
-
+        setDepartmentError(false);
         localStorage.removeItem("documentGeneratorData");
         setLastSaved(null);
         setIsDirty(false);
@@ -575,6 +593,7 @@ const DocumentGenerator: React.FC = () => {
   };
 
   // Form validation
+  // Form validation additions
   const validateForm = (): boolean => {
     let isValid = true;
 
@@ -582,28 +601,36 @@ const DocumentGenerator: React.FC = () => {
     setTitleError(false);
     setStudentError(false);
     setContentError(false);
+    setDepartmentError(false); // Added this line
 
-    // Title validation
-    if (!title.trim()) {
-      setTitleError(true);
+    // Existing validation...
+
+    // Department validation - if one number is filled, both must be filled
+    if (
+      (department.startNumber && !department.endNumber) ||
+      (!department.startNumber && department.endNumber)
+    ) {
+      setDepartmentError(true);
+      setError(
+        language === "hebrew"
+          ? "יש להזין את שני מספרי קוד המחלקה"
+          : "Please enter both department code numbers"
+      );
       isValid = false;
     }
 
-    // Student validation - at least one student must have a name
-    if (!students.some((student) => student.name.trim())) {
-      setStudentError(true);
-      isValid = false;
-    }
-
-    // Content validation
-    if (!content.trim()) {
-      setContentError(true);
-      isValid = false;
-    }
-
-    // Word limit validation
-    if (isOverLimit) {
-      setContentError(true);
+    // Check if start number is less than or equal to end number
+    if (
+      department.startNumber &&
+      department.endNumber &&
+      parseInt(department.startNumber) > parseInt(department.endNumber)
+    ) {
+      setDepartmentError(true);
+      setError(
+        language === "hebrew"
+          ? "מספר ההתחלה חייב להיות קטן או שווה למספר הסיום"
+          : "Start number must be less than or equal to end number"
+      );
       isValid = false;
     }
 
@@ -749,7 +776,12 @@ const DocumentGenerator: React.FC = () => {
           institutionCounter++;
         });
       }
-
+      let departmentCodeHtml = "";
+      if (department.startNumber && department.endNumber) {
+        departmentCodeHtml = `
+          <p class="department-code">${department.code} ${department.startNumber} - ${department.endNumber}</p>
+        `;
+      }
       // יצירת רשימת מנחים (כולם בשורה אחת)
       let mentorsHtml = "";
       if (language === "english") {
@@ -911,6 +943,11 @@ const DocumentGenerator: React.FC = () => {
               font-size: 18pt;
               margin-bottom: 20pt;
             }
+.department-code {
+  text-align: center;
+  font-size: 12pt;
+  margin-bottom: 20pt;
+}
             .students-header, .keywords-header {
               text-align: center;
               font-weight: bold;
@@ -949,6 +986,7 @@ const DocumentGenerator: React.FC = () => {
             formattedTitle ||
             (language === "english" ? "Untitled Document" : "מסמך ללא כותרת")
           }</div>
+          ${departmentCodeHtml}
           ${studentsHtml}
           ${mentorsAndInstitutionsHtml}       
           <div class="content">${
@@ -1117,6 +1155,90 @@ const DocumentGenerator: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+        <label>
+          {language === "hebrew" ? "קוד מחלקה:" : "Department Code:"}
+        </label>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            marginTop: "5px",
+          }}
+        >
+          <select
+            value={department.code}
+            onChange={(e) => {
+              setDepartment({ ...department, code: e.target.value });
+              setDepartmentError(false);
+              setFormDirty();
+            }}
+            style={{
+              padding: "8px",
+              borderRadius: "4px",
+              border: departmentError ? "1px solid red" : "1px solid #ccc",
+            }}
+          >
+            {departmentOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="number"
+            value={department.startNumber}
+            onChange={(e) => {
+              setDepartment({ ...department, startNumber: e.target.value });
+              setDepartmentError(false);
+              setFormDirty();
+            }}
+            placeholder={language === "hebrew" ? "מספר התחלה" : "Start number"}
+            style={{
+              padding: "8px",
+              borderRadius: "4px",
+              border: departmentError ? "1px solid red" : "1px solid #ccc",
+              width: "100px",
+            }}
+            min="1"
+          />
+
+          <span>-</span>
+
+          <input
+            type="number"
+            value={department.endNumber}
+            onChange={(e) => {
+              setDepartment({ ...department, endNumber: e.target.value });
+              setDepartmentError(false);
+              setFormDirty();
+            }}
+            placeholder={language === "hebrew" ? "מספר סיום" : "End number"}
+            style={{
+              padding: "8px",
+              borderRadius: "4px",
+              border: departmentError ? "1px solid red" : "1px solid #ccc",
+              width: "100px",
+            }}
+            min="1"
+          />
+        </div>
+        <div
+          className="guidance-note-container"
+          style={{
+            marginTop: "5px",
+            padding: "4px 8px",
+            borderLeft: "3px solid #3498db",
+            backgroundColor: "rgba(52, 152, 219, 0.05)",
+          }}
+        >
+          <p style={{ color: "grey", fontSize: "0.8em", margin: "0" }}>
+            {language === "hebrew"
+              ? "קוד המחלקה יופיע מתחת לכותרת במסמך הסופי כך: SE 1 - 10"
+              : "Department code  in the final document like: SE 1 - 10"}
+          </p>
         </div>
       </div>
 
