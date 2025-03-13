@@ -26,19 +26,33 @@ interface ConfirmationDialog {
   onConfirm: () => void;
 }
 
+// New interface for title text selection
+interface TitleSelection {
+  start: number;
+  end: number;
+  text: string;
+}
+
+// Interface for tracking manually formatted words
+interface FormattedWordInfo {
+  word: string;
+  position: number; // Starting position in the title
+  length: number;
+}
+
 type Language = "hebrew" | "english";
 
 const DocumentGenerator: React.FC = () => {
   const mentorsList = [
-    "Dr.Karim Abu-Affash",
-    "Dr.Irina Rabaev",
-    "Dr.Alexander Churkin",
-    "Dr.Natalia Vanetik",
-    "Dr.Hadas Chassidim",
-    "Dr.Marina Litvak",
-    "Dr.Yochai Twitto",
-    "Ms.Alona Kutsyy",
-    "Mr.Alexander Lazarovi",
+    "Dr. Karim Abu-Affash",
+    "Dr. Irina Rabaev",
+    "Dr. Alexander Churkin",
+    "Dr. Natalia Vanetik",
+    "Dr. Hadas Chassidim",
+    "Dr. Marina Litvak",
+    "Dr. Yochai Twitto",
+    "Ms. Alona Kutsyy",
+    "Mr. Alexander Lazarovich",
   ];
 
   // State variables
@@ -60,6 +74,16 @@ const DocumentGenerator: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // New state variable for title text selection
+  const [titleSelection, setTitleSelection] = useState<TitleSelection>({
+    start: 0,
+    end: 0,
+    text: "",
+  });
+
+  // Track words that have been manually formatted
+  const [formattedWords, setFormattedWords] = useState<FormattedWordInfo[]>([]);
+
   // New state variables for UI protection
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -79,11 +103,12 @@ const DocumentGenerator: React.FC = () => {
   // References
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   // אפשרויות תואר למנחים
   const mentorTitles = {
     hebrew: ["מר", "גב'", 'ד"ר', "פרופסור"],
-    english: ["Mr.", "Ms.", "Dr.", "Prof."],
+    english: ["Mr. ", "Ms. ", "Dr. ", "Prof. "],
   };
 
   // הגבלת מילים לפי שפה
@@ -261,6 +286,91 @@ const DocumentGenerator: React.FC = () => {
     });
   };
 
+  // Handle text selection in title
+  const handleTitleSelect = () => {
+    if (titleInputRef.current) {
+      const input = titleInputRef.current;
+      const selectionStart = input.selectionStart || 0;
+      const selectionEnd = input.selectionEnd || 0;
+
+      if (selectionStart !== selectionEnd) {
+        // Get the selected text
+        const selectedText = title.substring(selectionStart, selectionEnd);
+        setTitleSelection({
+          start: selectionStart,
+          end: selectionEnd,
+          text: selectedText,
+        });
+      }
+    }
+  };
+
+  // Apply title case to selected text (first letter uppercase, rest lowercase)
+  const applyTitleCase = () => {
+    if (titleSelection.text) {
+      const newText =
+        titleSelection.text.charAt(0).toUpperCase() +
+        titleSelection.text.slice(1).toLowerCase();
+
+      const newTitle =
+        title.substring(0, titleSelection.start) +
+        newText +
+        title.substring(titleSelection.end);
+
+      // Add this word to the list of manually formatted words
+      const newFormattedWord: FormattedWordInfo = {
+        word: newText,
+        position: titleSelection.start,
+        length: newText.length,
+      };
+
+      // Replace any existing entry for this position or add a new one
+      const updatedFormattedWords = formattedWords.filter(
+        (fw) => fw.position !== titleSelection.start
+      );
+      updatedFormattedWords.push(newFormattedWord);
+      setFormattedWords(updatedFormattedWords);
+
+      setTitle(newTitle);
+      setFormDirty();
+
+      // Reset selection after applying change
+      setTitleSelection({ start: 0, end: 0, text: "" });
+
+      // Re-focus the input
+      if (titleInputRef.current) {
+        titleInputRef.current.focus();
+      }
+    }
+  };
+
+  // Preserve original case (keep as is)
+  const preserveOriginalCase = () => {
+    if (titleSelection.text) {
+      // Add this word to the list of manually formatted words
+      const newFormattedWord: FormattedWordInfo = {
+        word: titleSelection.text,
+        position: titleSelection.start,
+        length: titleSelection.text.length,
+      };
+
+      // Replace any existing entry for this position or add a new one
+      const updatedFormattedWords = formattedWords.filter(
+        (fw) => fw.position !== titleSelection.start
+      );
+      updatedFormattedWords.push(newFormattedWord);
+      setFormattedWords(updatedFormattedWords);
+    }
+
+    // Clear the selection
+    setTitleSelection({ start: 0, end: 0, text: "" });
+
+    // Re-focus the input
+    if (titleInputRef.current) {
+      titleInputRef.current.focus();
+    }
+  };
+
   // הוספת סטודנט חדש
   const addStudent = () => {
     setStudents([...students, { name: "", email: "" }]);
@@ -326,7 +436,7 @@ const DocumentGenerator: React.FC = () => {
       ...mentors,
       {
         id: newId,
-        title: language === "english" ? "Dr." : 'ד"ר',
+        title: language === "english" ? "Dr. " : 'ד"ר',
         name: "",
         institutionId,
       },
@@ -373,7 +483,7 @@ const DocumentGenerator: React.FC = () => {
             setMentors([
               {
                 id: "1",
-                title: language === "hebrew" ? 'ד"ר' : "Dr.",
+                title: language === "hebrew" ? 'ד"ר' : "Dr. ",
                 name: "",
                 institutionId: "1",
               },
@@ -464,20 +574,6 @@ const DocumentGenerator: React.FC = () => {
     }
   };
 
-  // // שינוי שפה
-  // const handleLanguageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const newLanguage = e.target.value as Language;
-  //   setLanguage(newLanguage);
-
-  //   // עדכון תארי המנחים לפי השפה
-  //   const updatedMentors = mentors.map((mentor) => ({
-  //     ...mentor,
-  //     title: newLanguage === "hebrew" ? 'ד"ר' : "Dr.",
-  //   }));
-  //   setMentors(updatedMentors);
-  //   setFormDirty();
-  // };
-
   // Form validation
   const validateForm = (): boolean => {
     let isValid = true;
@@ -546,40 +642,56 @@ const DocumentGenerator: React.FC = () => {
         const keywordsList = keywords
           .split(",")
           .map((k) => k.trim())
-          .filter((k) => k);
+          .filter((k) => k) // סינון ערכים ריקים
+          .sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: "base" })
+          ); // מיון אלפביתי
 
         if (language === "english") {
-          // באנגלית מילות מפתח באותיות קטנות
+          // באנגלית מילות מפתח באותיות קטנות + מיון
           const lowercaseKeywords = keywordsList.map((k) => k.toLowerCase());
           keywordsHtml = `
-            <p class="keywords-header"><strong>Keywords:</strong> ${lowercaseKeywords.join(
-              " ; "
-            )}</p>
-          `;
+      <p class="keywords-header"><strong>Keywords:</strong> ${lowercaseKeywords.join(
+        " ; "
+      )}</p>
+    `;
         } else {
           keywordsHtml = `
-            <p class="keywords-header">מילות מפתח:</p>
-            <p class="keywords">${keywordsList.join(" ; ")}</p>
-          `;
+      <p class="keywords-header">מילות מפתח:</p>
+      <p class="keywords">${keywordsList.join(" ; ")}</p>
+    `;
         }
       }
 
+      /**
+       * פונקציה שמעצבת שם כך שהאות הראשונה בכל מילה תהיה גדולה ושאר האותיות קטנות
+       */
+      const formatName = (name: string) => {
+        return name
+          .trim()
+          .split(" ") // חלוקה למילים
+          .map(
+            (word: string) =>
+              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+          ) // שינוי אות ראשונה לכל מילה
+          .join(" "); // חיבור חזרה למחרוזת אחת
+      };
+      // עיבוד רשימת סטודנטים
       // עיבוד רשימת סטודנטים
       let studentsHtml = "";
-      const validStudents = students.filter((s) => s.name.trim());
+
+      // מיון סטודנטים לפי שם בסדר אלפביתי
+      const validStudents = students
+        .filter((s) => s.name.trim()) // סינון שמות ריקים
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        );
 
       if (validStudents.length > 0) {
         if (language === "english") {
           const formattedStudents = validStudents.map((student) => {
-            // עיצוב שמות באנגלית: שם פרטי באותיות קטנות, שם משפחה באותיות גדולות
-            const nameParts = student.name.trim().split(" ");
-            let formattedName = student.name;
-
-            if (nameParts.length > 1) {
-              const firstName = nameParts[0].toLowerCase();
-              const lastName = nameParts.slice(1).join(" ").toUpperCase();
-              formattedName = `${firstName} ${lastName}`;
-            }
+            // עיצוב שם כך שהאות הראשונה של כל מילה תהיה גדולה
+            const formattedName = formatName(student.name);
 
             let studentLine = formattedName;
             if (student.email) {
@@ -589,13 +701,13 @@ const DocumentGenerator: React.FC = () => {
           });
 
           studentsHtml = `
-            <p class="students-header"></p>
-            <p class="student-line">${formattedStudents.join(" <br> ")}</p>
-          `;
+      <p class="students-header"></p>
+      <p class="student-line">${formattedStudents.join(" <br> ")}</p>
+    `;
         } else {
           studentsHtml = `<p class="students-header"></p>`;
           validStudents.forEach((student) => {
-            let studentLine = student.name;
+            let studentLine = formatName(student.name); // שימוש בעיצוב השם
             if (student.email) {
               studentLine += ` ; ${student.email}`;
             }
@@ -652,10 +764,10 @@ const DocumentGenerator: React.FC = () => {
           .forEach((mentor, index, filteredMentors) => {
             // הוספת שם המנחה עם התואר המתאים
             if (
-              mentor.name.includes("Mr.") ||
-              mentor.name.includes("Dr.") ||
-              mentor.name.includes("Ms.") ||
-              mentor.name.includes("Prof.")
+              mentor.name.includes("Mr. ") ||
+              mentor.name.includes("Dr. ") ||
+              mentor.name.includes("Ms. ") ||
+              mentor.name.includes("Prof. ")
             ) {
               // אם התואר כבר כלול בשם, לא צריך להוסיף אותו שוב
               mentorsHtml += `${mentor.name}`;
@@ -734,17 +846,37 @@ const DocumentGenerator: React.FC = () => {
           ? content.replace(/\n/g, " ") // באנגלית מחליף ירידות שורה ברווחים (פסקה אחת)
           : content.replace(/\n/g, "<br>"); // בעברית שומר על ירידות שורה
 
-      // עיצוב הכותרת
-      const formattedTitle =
-        language === "english" && title
-          ? title
-              .split(" ")
-              .map(
-                (word) =>
-                  word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-              )
-              .join(" ") // באנגלית: אות ראשונה גדולה בכל מילה
-          : title;
+      // עיבוד הכותרת לפי הכללים החדשים
+      let formattedTitle = "";
+
+      if (title) {
+        // פיצול הכותרת למילים
+        const words = title.split(/\s+/);
+
+        // עיבוד כל מילה בנפרד
+        formattedTitle = words
+          .map((word, index) => {
+            // בדיקה האם המילה עברה פורמט ידני
+            const manuallyFormatted = formattedWords.find(
+              (fw) =>
+                title.indexOf(fw.word) <= title.indexOf(word) &&
+                title.indexOf(fw.word) + fw.word.length >=
+                  title.indexOf(word) + word.length
+            );
+
+            if (manuallyFormatted) {
+              // אם המילה עברה פורמט ידני, השתמש בפורמט הקיים
+              return word;
+            } else if (index === 0) {
+              // המילה הראשונה: האות הראשונה גדולה, שאר האותיות קטנות
+              return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            } else {
+              // כל שאר המילים: אותיות קטנות בלבד
+              return word.toLowerCase();
+            }
+          })
+          .join(" ");
+      }
 
       // הגדרת כיוון טקסט ופונט לפי שפה
       const textDirection = language === "english" ? "ltr" : "rtl";
@@ -799,10 +931,9 @@ const DocumentGenerator: React.FC = () => {
             }
             .institution {
               margin-bottom: 10pt;
-              font-style: italic;
             }
             .institution-name {
-              font-weight: bold;
+              
             }
             .keywords {
               margin-bottom: 8pt;
@@ -872,68 +1003,6 @@ const DocumentGenerator: React.FC = () => {
         {language === "hebrew" ? "יוצר מסמכי וורד" : "Word Document Generator"}
       </h1>
 
-      {/* <div className="form-section language-section">
-        <h2 className="section-title">
-          {language === "hebrew" ? "שפת המסמך" : "Document Language"}
-        </h2>
-        <div className="language-options">
-          <label
-            className={`${language === "hebrew" ? "active disabled" : ""}`}
-          >
-            <input
-              type="radio"
-              name="language"
-              value="hebrew"
-              checked={language === "hebrew"}
-              onChange={handleLanguageChange}
-              disabled={language === "hebrew"}
-            />
-            עברית
-          </label>
-          <label
-            className={`${language === "english" ? "active english-mode" : ""}`}
-          >
-            <input
-              type="radio"
-              name="language"
-              value="english"
-              checked={language === "english"}
-              onChange={handleLanguageChange}
-              disabled={language === "english"}
-            />
-            English
-          </label>
-        </div>
-
-        <div className={`language-info ${language}-info`}>
-          {language === "hebrew" ? (
-            <div>
-              <p>
-                <strong>הנחיות עיצוב לעברית:</strong>
-              </p>
-              <ul>
-                <li>גופן: David</li>
-                <li>גודל כותרת: 18</li>
-                <li>כיוון טקסט: מימין לשמאל</li>
-                <li>מגבלת תוכן: עד 200 מילים</li>
-              </ul>
-            </div>
-          ) : (
-            <div>
-              <p>
-                <strong>English Formatting Guidelines:</strong>
-              </p>
-              <ul>
-                <li>Font: Times New Roman</li>
-                <li>Title Size: 18pt</li>
-                <li>Text Direction: Left to Right</li>
-                <li>Content Limit: Up to 120 words</li>
-              </ul>
-            </div>
-          )}
-        </div>
-      </div> */}
-
       <div className="form-section">
         <h2 className="section-title">
           {language === "hebrew" ? "פרטי מסמך" : "Document Details"}
@@ -945,6 +1014,7 @@ const DocumentGenerator: React.FC = () => {
           </label>
           <input
             id="title"
+            ref={titleInputRef}
             type="text"
             value={title}
             onChange={(e) => {
@@ -952,6 +1022,9 @@ const DocumentGenerator: React.FC = () => {
               setTitleError(false);
               setFormDirty();
             }}
+            onSelect={handleTitleSelect}
+            onClick={handleTitleSelect}
+            onKeyUp={handleTitleSelect}
             placeholder={
               language === "hebrew" ? "הזן כותרת כאן" : "Enter title here"
             }
@@ -964,6 +1037,84 @@ const DocumentGenerator: React.FC = () => {
               {language === "hebrew"
                 ? "נא להזין כותרת"
                 : "Please enter a title"}
+            </div>
+          )}
+
+          {/* הצגת ההערה רק אם השדה ריק */}
+          {title.trim() === "" && (
+            <div
+              className="guidance-note-container"
+              style={{
+                marginTop: "5px",
+                padding: "4px 8px",
+                borderLeft: "3px solid red",
+                backgroundColor: "rgba(216, 119, 119, 0.05)",
+              }}
+            >
+              {" "}
+              <p style={{ color: "grey", fontSize: "0.8em", margin: "0" }}>
+                <strong>English:</strong> You can select a word in the title to
+                define it as a name (with the first letter uppercase) or to
+                preserve its original formatting. This is useful for names,
+                acronyms, or special words in the title.
+              </p>
+              <p style={{ color: "grey", fontSize: "0.8em", margin: "0" }}>
+                <strong>עברית:</strong> אפשר לבחור מילה בכותרת כדי להפוך אותה
+                לשם (עם אות ראשונה גדולה) או לשמור על הצורה המקורית שלה. זה
+                שימושי לשמות פרטיים, ראשי תיבות או מילים חשובות.
+              </p>
+            </div>
+          )}
+
+          {/* Title formatting options */}
+          {titleSelection.text && (
+            <div
+              className="title-formatting-options"
+              style={{ marginTop: "10px" }}
+            >
+              <span
+                className="selected-text-label"
+                style={{ marginRight: "10px" }}
+              >
+                {language === "hebrew"
+                  ? `עיצוב הטקסט הנבחר: "${titleSelection.text}"`
+                  : `Format selected text: "${titleSelection.text}"`}
+              </span>
+              <button
+                type="button"
+                className="title-case-button"
+                style={{
+                  marginRight: "10px",
+                  padding: "5px 10px",
+                  backgroundColor: "#4285f4",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+                onClick={applyTitleCase}
+              >
+                {language === "hebrew"
+                  ? "אות ראשונה גדולה"
+                  : "First Letter Uppercase"}
+              </button>
+              <button
+                type="button"
+                className="preserve-case-button"
+                style={{
+                  padding: "5px 10px",
+                  backgroundColor: "#808080",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+                onClick={preserveOriginalCase}
+              >
+                {language === "hebrew"
+                  ? "שמירה על העיצוב המקורי"
+                  : "Keep Original Case"}
+              </button>
             </div>
           )}
         </div>
@@ -1092,6 +1243,29 @@ const DocumentGenerator: React.FC = () => {
                     </button>
                   )}
                 </div>
+                {/* הערה לגבי אותיות גדולות בשם המוסד - תוצג רק כאשר מתחילים להקליד וגם לא מדובר ב-SCE */}
+                {institution.name && !institution.name.startsWith("SCE") && (
+                  <div
+                    className="guidance-note-container"
+                    style={{
+                      marginTop: "5px",
+                      padding: "4px 8px",
+                      borderLeft: "3px solid red",
+                      backgroundColor: "rgba(255, 0, 0, 0.05)",
+                    }}
+                  >
+                    <p style={{ color: "red", fontSize: "0.8em", margin: "0" }}>
+                      {language === "hebrew"
+                        ? "רק האות הראשונה גדולה למעט חריגים כמו HIT"
+                        : "Only the first letter should be capitalized except for exceptions like HIT"}
+                    </p>
+                    <p style={{ color: "red", fontSize: "0.8em", margin: "0" }}>
+                      {language === "hebrew"
+                        ? "Only the first letter should be capitalized except for exceptions like HIT"
+                        : "רק האות הראשונה גדולה למעט חריגים כמו HIT"}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1150,54 +1324,106 @@ const DocumentGenerator: React.FC = () => {
 
                     {/* שדה טקסט חופשי - יוצג רק אם אין בחירה מהרשימה או השדה ריק */}
                     {(!mentor.name || !mentorsList.includes(mentor.name)) && (
-                      <>
-                        <input
-                          type="text"
-                          value={mentor.name}
-                          onChange={(e) => {
-                            const newValue = e.target.value;
-                            updateMentor(mentor.id, "name", newValue);
-                          }}
-                          placeholder={
-                            language === "hebrew" ? "שם המנחה" : "Mentor name"
-                          }
-                          className={`mentor-name ${
-                            language === "english" ? "english-focus" : ""
-                          }`}
-                          dir={language === "english" ? "ltr" : "rtl"}
-                        />
-                        <select
-                          value={mentor.title}
-                          onChange={(e) =>
-                            updateMentor(mentor.id, "title", e.target.value)
-                          }
-                          className={`mentor-title ${
-                            language === "english" ? "english-focus" : ""
-                          }`}
-                        >
-                          {mentorTitles[language].map((title) => (
-                            <option key={title} value={title}>
-                              {title}
-                            </option>
-                          ))}
-                        </select>
-                      </>
-                    )}
-                    {mentors.filter((m) => m.institutionId === institution.id)
-                      .length > 1 && (
-                      <button
-                        type="button"
-                        className="remove-button"
-                        onClick={() => removeMentor(mentor.id)}
-                        aria-label={
-                          language === "hebrew" ? "הסר מנחה" : "Remove mentor"
-                        }
-                        title={
-                          language === "hebrew" ? "הסר מנחה" : "Remove mentor"
-                        }
+                      <div
+                        className="mentor-manual-input-container"
+                        style={{ width: "100%" }}
                       >
-                        ×
-                      </button>
+                        <div
+                          className="mentor-input-fields"
+                          style={{ display: "flex", alignItems: "center" }}
+                        >
+                          <select
+                            value={mentor.title}
+                            onChange={(e) =>
+                              updateMentor(mentor.id, "title", e.target.value)
+                            }
+                            className={`mentor-title ${
+                              language === "english" ? "english-focus" : ""
+                            }`}
+                          >
+                            {mentorTitles[language].map((title) => (
+                              <option key={title} value={title}>
+                                {title}
+                              </option>
+                            ))}
+                          </select>{" "}
+                          <input
+                            type="text"
+                            value={mentor.name}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              updateMentor(mentor.id, "name", newValue);
+                            }}
+                            placeholder={
+                              language === "hebrew" ? "שם המנחה" : "Mentor name"
+                            }
+                            className={`mentor-name ${
+                              language === "english" ? "english-focus" : ""
+                            }`}
+                            dir={language === "english" ? "ltr" : "rtl"}
+                          />
+                          {mentors.filter(
+                            (m) => m.institutionId === institution.id
+                          ).length > 1 && (
+                            <button
+                              type="button"
+                              className="remove-button"
+                              onClick={() => removeMentor(mentor.id)}
+                              aria-label={
+                                language === "hebrew"
+                                  ? "הסר מנחה"
+                                  : "Remove mentor"
+                              }
+                              title={
+                                language === "hebrew"
+                                  ? "הסר מנחה"
+                                  : "Remove mentor"
+                              }
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+
+                        {/* הערה לגבי פורמט שם המנחה - יוצג רק כשמתחילים להקליד */}
+                        {mentor.name && !mentorsList.includes(mentor.name) && (
+                          <div
+                            className="mentor-hint"
+                            style={{
+                              display: "inline-block",
+                              marginTop: "4px",
+                              backgroundColor: "rgba(255, 0, 0, 0.05)",
+                              border: "1px dashed red",
+                              borderRadius: "3px",
+                              padding: "3px 8px",
+                            }}
+                          >
+                            <span style={{ color: "red", fontSize: "0.8em" }}>
+                              <span
+                                className={
+                                  language === "hebrew" ? "" : "guidance-hebrew"
+                                }
+                              >
+                                {language === "hebrew"
+                                  ? "יש להקפיד על הטיטלה של המנחה בצורה הבא Dr. רווח ושם פרטי ושם משפחה"
+                                  : "יש להקפיד על הטיטלה של המנחה בצורה הבא Dr. רווח ושם פרטי ושם משפחה"}
+                              </span>
+                              {" / "}
+                              <span
+                                className={
+                                  language === "english"
+                                    ? ""
+                                    : "guidance-english"
+                                }
+                              >
+                                {language === "english"
+                                  ? "Make sure to follow the title format: Dr. [first name] [last name]"
+                                  : "Make sure to follow the title format: Dr. [first name] [last name]"}
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}

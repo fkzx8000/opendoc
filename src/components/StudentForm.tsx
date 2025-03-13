@@ -44,7 +44,11 @@ const StudentForm: React.FC<StudentFormProps> = ({
    */
   const handleAddStudent = () => {
     if (students.length < FORM_VALIDATION.maxStudents) {
-      onStudentsChange([...students, { name: "", email: "" }]);
+      const updatedStudents = [...students, { name: "", email: "" }];
+      updatedStudents.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      );
+      onStudentsChange(updatedStudents);
     }
   };
 
